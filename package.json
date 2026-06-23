@@ -1,0 +1,42 @@
+{
+  "name": "@nadernabil216/skillsmith",
+  "version": "0.1.0",
+  "description": "A scalable, versioned catalog of AI-agent skills installable into any CLI agent (Claude, Codex/GPT, Gemini, Kimi, GLM, opencode, ...).",
+  "type": "module",
+  "bin": {
+    "skillsmith": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build-manifest.js",
+    "prepublishOnly": "node scripts/build-manifest.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "skills",
+    "claude",
+    "llm",
+    "cli",
+    "skill-library",
+    "agent-skills"
+  ],
+  "author": "Nader Nabil",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NaderNabil216/skillsmith.git"
+  }
+}

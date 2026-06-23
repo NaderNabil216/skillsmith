@@ -1,0 +1,22 @@
+{
+  "name": "@nadernabil216/skillsmith",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "name": "commit-suggest",
+      "description": "Use when writing or improving a git commit message for staged changes.",
+      "version": "08cdcc6d",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "process-pr-comment",
+      "description": "Use when triaging, responding to, or resolving review comments on a pull request.",
+      "version": "5d724624",
+      "files": [
+        "SKILL.md"
+      ]
+    }
+  ]
+}
