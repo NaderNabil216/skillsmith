@@ -62,7 +62,7 @@ npx @nadernabil216/skillsmith add commit-suggest
 Or another:
 
 ```bash
-npx @nadernabil216/skillsmith add process-pr-comment
+npx @nadernabil216/skillsmith add process-pr-comments
 ```
 
 Or install the **whole catalog** at once:
@@ -162,18 +162,18 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with:
+Run `skillsmith list` for the live set. Today the catalog ships with two skills that pair together:
 
 ### `commit-suggest`
 
-**Why it matters:** turns a pile of staged changes into a clean, conventional commit message that matches your repo's style — so your history stays readable, searchable, and reviewable.
+**Why it matters:** drafts a commit message that follows your project's commit-message guide — ticket ID in brackets, imperative header, a body that explains the *why* — and **only suggests, never commits**, so you stay in control of history.
 
 **What it does, in steps:**
 
-1. Inspects exactly what's staged (`git diff --staged`) — it never invents changes.
-2. Reads recent history to match your convention (Conventional Commits, ticket prefixes, or plain sentences).
-3. Drafts an imperative subject (≤ 50 chars) plus a body that explains the *why* when the change isn't trivial.
-4. Shows you the message and waits for your confirmation before committing.
+1. Gathers the real working-tree changes (`git status`, `git diff HEAD`) so the message reflects the actual diff, not a guess from filenames.
+2. Derives the ticket ID from the branch name (e.g. `feature/EPTA-47-…` → `[EPTA-47]`), or notes if none is found.
+3. Composes the message per its embedded rules: imperative header with no trailing period, **Issue/Solution** sections for bug fixes, **Changes** bullets for features.
+4. Presents it in a copyable block — and never runs `git commit`.
 
 **Install:**
 
@@ -181,21 +181,24 @@ Run `skillsmith list` for the live set. Today the catalog ships with:
 npx @nadernabil216/skillsmith add commit-suggest
 ```
 
-### `process-pr-comment`
+### `process-pr-comments`
 
-**Why it matters:** makes sure **no review comment slips through** — every one becomes a code change, a reply, or a tracked follow-up, so reviews close faster and cleaner.
+**Why it matters:** an end-to-end workflow for addressing **unresolved review comments on GitHub PRs, GitLab MRs, or Bitbucket PRs** — every comment is validated against the real code before you act, nothing slips through, and recurring feedback becomes durable project rules.
 
 **What it does, in steps:**
 
-1. Gathers the PR's discussion and inline threads (via the `gh` CLI).
-2. Triages each comment into one of: change requested · question · nit · out-of-scope.
-3. Makes minimal, focused edits for the requested changes, referencing the comment.
-4. Drafts a specific reply per thread and summarizes every comment with the action taken — nothing skipped.
+1. Detects the forge (GitHub / GitLab / Bitbucket) and resolves access (official CLI first, REST token fallback).
+2. Checks out the PR/MR's source branch and merges the target, so review happens against an up-to-date tree.
+3. Fetches only the **unresolved** comment threads, walking replies and tasks.
+4. Scores each comment 1–5 — **validated against the actual code** (and the design tool for design comments) — then presents them in batches for your *Apply / Skip / Modify* decision.
+5. Drafts an implementation plan for your approval, then implements the approved changes.
+6. Suggests a commit message (reusing **`commit-suggest`** when it's installed).
+7. Extracts reusable rules into `docs/pr-review-rules.md` and points your conventions file at them.
 
 **Install:**
 
 ```bash
-npx @nadernabil216/skillsmith add process-pr-comment
+npx @nadernabil216/skillsmith add process-pr-comments
 ```
 
 ---

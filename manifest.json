@@ -4,16 +4,16 @@
   "skills": [
     {
       "name": "commit-suggest",
-      "description": "Use when writing or improving a git commit message for staged changes.",
-      "version": "08cdcc6d",
+      "description": "Suggest a commit message for the current changes following this project's commit message guide. Use when asked to suggest, draft, propose, or write a commit message for the staged/unstaged changes.",
+      "version": "3d04dbfa",
       "files": [
         "SKILL.md"
       ]
     },
     {
-      "name": "process-pr-comment",
-      "description": "Use when triaging, responding to, or resolving review comments on a pull request.",
-      "version": "5d724624",
+      "name": "process-pr-comments",
+      "description": "Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. \"process PR comments\", \"address review feedback on PR/MR 123\", \"apply PR review comments\", \"work through MR X\". Detects the forge, prefers the official CLI (gh/glab/bb) with REST fallback, then handles branch checkout, fetching updates, scoring unresolved comments validated against the actual code (and against the design tool for design comments), showing each comment with a code snippet, getting user approval per comment, generating an implementation plan, suggesting a commit message, and extracting reusable rules into a standalone rules file. Capability-based steps with a Claude Code tool-mapping section.",
+      "version": "6cc31855",
       "files": [
         "SKILL.md"
       ]
