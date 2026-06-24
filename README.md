@@ -33,35 +33,63 @@ So you copy-paste the same playbooks into every project, for every tool, and the
 - 🎯 **Any agent** — adapters drop each skill into the right place, in the right format, for the agent you target.
 - 🔒 **A lockfile** — `.skillsmith.json` records exactly what's installed so a teammate can reproduce it.
 - 🔄 **Updates** — `skillsmith update` pulls the latest catalog and re-syncs everything.
-- 🛡️ **Signed** — published from CI via npm Trusted Publishing (OIDC) with provenance attestations.
+- 🛡️ **Signed** — published with npm provenance attestations.
 
 > A *skill* is just a folder with a `SKILL.md` — YAML frontmatter (`name`, `description`) plus the instructions an agent reads and follows when the task matches.
 
 ---
 
-## Quick start
+# 🚀 Installation & Usage
 
-No install required — run it straight from npm with `npx`:
+> **No install required.** Run any command straight from npm with `npx`. Each block below is a single command — copy it on its own.
+
+### 1. Browse the catalog
 
 ```bash
-# Browse the catalog
 npx @nadernabil216/skillsmith list
+```
 
-# Install skills into the current project (Claude Code by default)
-npx @nadernabil216/skillsmith add commit-suggest process-pr-comment
+### 2. Install a skill into your project
 
-# Target a different agent
+Claude Code is the default target. Add one skill:
+
+```bash
+npx @nadernabil216/skillsmith add commit-suggest
+```
+
+Or another:
+
+```bash
+npx @nadernabil216/skillsmith add process-pr-comment
+```
+
+Or install the **whole catalog** at once:
+
+```bash
+npx @nadernabil216/skillsmith add --all
+```
+
+### 3. Target a different agent
+
+Add `--agent <id>` (see the [agent matrix](#supported-agents)):
+
+```bash
 npx @nadernabil216/skillsmith add --all --agent codex
 ```
 
-Prefer a persistent command? Install it globally:
+### 4. (Optional) Install the command globally
 
 ```bash
 npm install -g @nadernabil216/skillsmith
+```
+
+Then call it directly anywhere:
+
+```bash
 skillsmith list
 ```
 
-That's it — the skills are now in your project and your agent will pick them up.
+That's it — the skills are now in your project and your agent will pick them up. ✅
 
 ---
 
@@ -79,8 +107,10 @@ That's it — the skills are now in your project and your agent will pick them u
 
 For agents that don't natively scan a skills folder, skillsmith maintains a **managed block** in their instruction file (`AGENTS.md` / `GEMINI.md`) that lists the installed skills and points at them — so the agent always knows they exist. Your own content in those files is left untouched.
 
+Print the matrix any time:
+
 ```bash
-skillsmith agents   # print this matrix any time
+skillsmith agents
 ```
 
 ---
@@ -114,8 +144,7 @@ skillsmith agents   # print this matrix any time
 
 ```mermaid
 flowchart LR
-    A["skills/&lt;name&gt;/SKILL.md<br/>(source of truth)"] -->|npm run build| B["manifest.json<br/>name · description · version hash"]
-    B -->|npm publish / CI| C["npm registry<br/>@nadernabil216/skillsmith"]
+    A["skills/&lt;name&gt;/SKILL.md<br/>(source of truth)"] -->|published to npm| C["@nadernabil216/skillsmith"]
     C -->|npx / install| D["skillsmith CLI"]
     D -->|adapter per agent| E[".claude/skills/"]
     D --> F[".agent/skills/ + AGENTS.md"]
@@ -123,133 +152,89 @@ flowchart LR
     D -->|records| H[".skillsmith.json (lockfile)"]
 ```
 
-- **Catalog** — every skill is a self‑contained folder under `skills/`. `npm run build` scans them and regenerates `manifest.json` (name, description, per‑skill content hash). _Adding a skill = dropping a folder; there's no registry to hand‑edit._
+- **Catalog** — every skill is a self‑contained `SKILL.md` folder, versioned by a content hash.
 - **Lockfile** — `.skillsmith.json` in your project records the target agent and which skills (at which versions) are installed. `sync` reproduces it on any machine.
 - **Adapters** — each agent maps to a target directory and, when needed, a managed block in its instruction file.
 
 ---
 
-## The starter catalog
+## 📚 The skill catalog
 
-| Skill | Use it when… |
-|---|---|
-| **`commit-suggest`** | writing or improving a git commit message for staged changes |
-| **`process-pr-comment`** | triaging, responding to, or resolving review comments on a pull request |
+Run `skillsmith list` for the live set. Today the catalog ships with:
 
-More skills are added over time — run `skillsmith list` for the current set, and `skillsmith update` to pull new ones.
+### `commit-suggest`
+
+**Why it matters:** turns a pile of staged changes into a clean, conventional commit message that matches your repo's style — so your history stays readable, searchable, and reviewable.
+
+**What it does, in steps:**
+
+1. Inspects exactly what's staged (`git diff --staged`) — it never invents changes.
+2. Reads recent history to match your convention (Conventional Commits, ticket prefixes, or plain sentences).
+3. Drafts an imperative subject (≤ 50 chars) plus a body that explains the *why* when the change isn't trivial.
+4. Shows you the message and waits for your confirmation before committing.
+
+**Install:**
+
+```bash
+npx @nadernabil216/skillsmith add commit-suggest
+```
+
+### `process-pr-comment`
+
+**Why it matters:** makes sure **no review comment slips through** — every one becomes a code change, a reply, or a tracked follow-up, so reviews close faster and cleaner.
+
+**What it does, in steps:**
+
+1. Gathers the PR's discussion and inline threads (via the `gh` CLI).
+2. Triages each comment into one of: change requested · question · nit · out-of-scope.
+3. Makes minimal, focused edits for the requested changes, referencing the comment.
+4. Drafts a specific reply per thread and summarizes every comment with the action taken — nothing skipped.
+
+**Install:**
+
+```bash
+npx @nadernabil216/skillsmith add process-pr-comment
+```
 
 ---
 
 ## Keeping skills up to date
 
-The npm package **is** the version. Once new skills are published, users get them with one command:
+Upgrade the catalog and re-sync everything you have installed:
 
 ```bash
-skillsmith update          # upgrade the catalog + re-sync everything you have
-skillsmith update commit-suggest   # just one skill
+skillsmith update
+```
+
+Update just one skill:
+
+```bash
+skillsmith update commit-suggest
 ```
 
 Reproduce an exact set on a fresh checkout (the lockfile is committed to your repo):
 
 ```bash
-git clone <your-project> && cd <your-project>
 npx @nadernabil216/skillsmith sync
 ```
 
 ---
 
-## Creating a new skill
-
-1. Create a folder under `skills/` with a `SKILL.md`:
-
-   ```
-   skills/your-skill/SKILL.md
-   ```
-
-   ```markdown
-   ---
-   name: your-skill
-   description: One line — when an agent should use this skill.
-   ---
-
-   # Your Skill
-
-   Step-by-step instructions the agent follows…
-   ```
-
-2. Regenerate the manifest and (optionally) test locally:
-
-   ```bash
-   npm run build
-   node bin/cli.js list
-   ```
-
-3. Release it (see below). Users then run `skillsmith update`.
-
-> Keep skills **agent-agnostic**: describe the workflow and reasoning, lean on portable tools (`git`, `gh`), and don't assume a specific agent's tool names.
-
----
-
-## Publishing (maintainers)
-
-This package uses **npm Trusted Publishing (OIDC)** — no `NPM_TOKEN` secret, and provenance attestations are generated automatically. (npm classic tokens were revoked in Dec 2025.)
-
-**First publish — manual, one time** (a trusted publisher can only be attached to an existing package):
-
-```bash
-npm login                         # sign in
-npm publish --otp=<code>          # public via publishConfig.access; 2FA code required
-```
-
-**Enable OIDC** on npmjs.com → your package → **Settings → Trusted Publisher → GitHub Actions**:
-
-| Field | Value |
-|---|---|
-| Organization or user | `NaderNabil216` |
-| Repository | `skillsmith` |
-| Workflow filename | `publish.yml` |
-
-**Every release after that is hands-off** — push a version tag and CI publishes via OIDC:
-
-```bash
-npm run build && git commit -am "feat: add a skill"
-npm version patch                 # bumps package.json + tags
-git push --follow-tags            # tag → .github/workflows/publish.yml publishes
-```
-
-> The runner needs npm ≥ 11.5.1 and Node ≥ 22.14.0 for OIDC — the workflow handles both.
-
----
-
 ## Verify a release
 
+Check the published version and metadata:
+
 ```bash
-npm view @nadernabil216/skillsmith              # version, metadata
-npx @nadernabil216/skillsmith@latest list       # install from the public registry
+npm view @nadernabil216/skillsmith
+```
+
+Install the latest straight from the public registry:
+
+```bash
+npx @nadernabil216/skillsmith@latest list
 ```
 
 Published builds carry a [provenance attestation](https://docs.npmjs.com/generating-provenance-statements) linking the tarball back to the exact GitHub Actions run that built it.
-
----
-
-## Project layout
-
-```
-skillsmith/
-├─ bin/cli.js                   # CLI entry (list / add / remove / update / sync / agents)
-├─ src/
-│  ├─ catalog.js                # loads manifest + skill sources
-│  ├─ adapters.js               # per-agent targets + managed index
-│  ├─ lockfile.js               # .skillsmith.json
-│  ├─ install.js                # add / remove / sync core
-│  └─ util.js                   # helpers, frontmatter, semver
-├─ scripts/build-manifest.js    # scans skills/ → manifest.json
-├─ skills/<name>/SKILL.md       # the catalog
-├─ .github/workflows/publish.yml
-└─ manifest.json                # generated
-```
-
-Zero runtime dependencies.
 
 ---
 
@@ -257,7 +242,7 @@ Zero runtime dependencies.
 
 Skills and adapters are both welcome:
 
-- **A new skill** → add a folder under `skills/`, run `npm run build`, open a PR.
+- **A new skill** → add a folder under `skills/` with a `SKILL.md`, then open a PR.
 - **A new agent** → add an entry to `AGENTS` in `src/adapters.js` (target dir + optional index file).
 
 ---
