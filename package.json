@@ -1,6 +1,6 @@
 {
   "name": "@nadernabil216/skillsmith",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A scalable, versioned catalog of AI-agent skills installable into any CLI agent (Claude, Codex/GPT, Gemini, Kimi, GLM, opencode, ...).",
   "type": "module",
   "bin": {
