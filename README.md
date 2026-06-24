@@ -16,6 +16,14 @@
 
 ---
 
+> **skillsmith is a tool that carries a catalog of AI-agent skills and installs any of them into the agent you're using with a single line:**
+>
+> ```bash
+> npx @nadernabil216/skillsmith add <skill>
+> ```
+>
+> One catalog → any agent (Claude, Codex, Gemini, Kimi, GLM, opencode), always versioned and in sync.
+
 ## The problem
 
 Every AI coding agent wants your skills in a **different place, in a different format**:
@@ -162,18 +170,31 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with two skills that pair together:
+Run `skillsmith list` for the live set. Today the catalog ships with two skills that **pair together** — `process-pr-comments` calls `commit-suggest` at its commit step.
 
-### `commit-suggest`
+---
 
-**Why it matters:** drafts a commit message that follows your project's commit-message guide — ticket ID in brackets, imperative header, a body that explains the *why* — and **only suggests, never commits**, so you stay in control of history.
+### 🧩 `commit-suggest`
 
-**What it does, in steps:**
+> Suggest a commit message for your current changes, **following your project's own commit-message guide** — and only suggest, never commit.
 
-1. Gathers the real working-tree changes (`git status`, `git diff HEAD`) so the message reflects the actual diff, not a guess from filenames.
-2. Derives the ticket ID from the branch name (e.g. `feature/EPTA-47-…` → `[EPTA-47]`), or notes if none is found.
-3. Composes the message per its embedded rules: imperative header with no trailing period, **Issue/Solution** sections for bug fixes, **Changes** bullets for features.
-4. Presents it in a copyable block — and never runs `git commit`.
+**Why it matters:** consistent, ticket-tagged, *why*-focused commit messages keep history searchable and reviewable. This skill writes one in your repo's exact style and hands control back to you — it never runs `git commit`.
+
+**How it handles its work — step by step:**
+
+1. **Reads the real change.** Runs `git status --short` and `git diff HEAD` so the message reflects what actually changed, not a guess from filenames; on a huge diff it falls back to `--stat` plus the most relevant hunks.
+2. **Derives the ticket ID** from the branch name (`feature/EPTA-47-…` → `[EPTA-47]`), or notes that none was found.
+3. **Composes the message** to its embedded rules (below).
+4. **Presents it** in a copyable block, flags any staged-vs-unstaged mismatch (since `git commit` without `-a` only captures staged files), and stops — *you* decide whether to commit.
+
+<details>
+<summary><b>The commit-message rules it enforces</b></summary>
+
+- **Header** — ticket ID in `[BRACKETS]` when available · **imperative** verb (`Add`, `Fix`, `Refactor`, `Update`) · no trailing period · focused on the *what*.
+- **Body** — explains the *why*, never restates the diff. **Bug fixes** use `**Issue**` / `**Solution**` sections; **features** use a `**Changes**` bullet list; trivially-scoped changes may be title-only.
+- **Avoids** — vague/meta messages (`WIP`, `apply PR comments`, `minor fixes`), describing *how* the code works, or more than one blank line between sections.
+
+</details>
 
 **Install:**
 
@@ -181,19 +202,26 @@ Run `skillsmith list` for the live set. Today the catalog ships with two skills 
 npx @nadernabil216/skillsmith add commit-suggest
 ```
 
-### `process-pr-comments`
+---
 
-**Why it matters:** an end-to-end workflow for addressing **unresolved review comments on GitHub PRs, GitLab MRs, or Bitbucket PRs** — every comment is validated against the real code before you act, nothing slips through, and recurring feedback becomes durable project rules.
+### 🔎 `process-pr-comments`
 
-**What it does, in steps:**
+> An end-to-end workflow for addressing **unresolved review comments on a GitHub PR, GitLab MR, or Bitbucket PR** — forge-agnostic, code-validated, and approval-gated.
 
-1. Detects the forge (GitHub / GitLab / Bitbucket) and resolves access (official CLI first, REST token fallback).
-2. Checks out the PR/MR's source branch and merges the target, so review happens against an up-to-date tree.
-3. Fetches only the **unresolved** comment threads, walking replies and tasks.
-4. Scores each comment 1–5 — **validated against the actual code** (and the design tool for design comments) — then presents them in batches for your *Apply / Skip / Modify* decision.
-5. Drafts an implementation plan for your approval, then implements the approved changes.
-6. Suggests a commit message (reusing **`commit-suggest`** when it's installed).
-7. Extracts reusable rules into `docs/pr-review-rules.md` and points your conventions file at them.
+**Why it matters:** review feedback is easy to lose track of. This skill makes sure **every unresolved comment is seen, judged against the real code, and either resolved or consciously skipped** — then turns recurring feedback into durable project rules so the same notes don't come back.
+
+**How it handles its work — phase by phase:**
+
+1. **Context (Phase 0).** Detects the forge from the git remote, resolves access (official CLI `gh`/`glab`/`bb` first, REST-token fallback), and finds your conventions file and validation command — asking at most **one** consolidated question.
+2. **Change-request details (Phase 1).** Asks for the PR/MR number (**always asked, never inferred**) and fetches its title, ticket, source/target branches, and reviewers.
+3. **Branch setup (Phase 2).** Checks out the source branch and merges the target, so review runs against an up-to-date tree (handling conflicts with you if they arise).
+4. **Fetch comments (Phase 3).** Pulls only the **unresolved** threads, walking every reply and task; exits early if there's nothing to address.
+5. **Score & decide (Phase 4).** Scores each comment **1–5, validated against the actual code** (and against the design tool for visual comments), then presents them in batches for an *Apply / Skip / Modify* decision.
+6. **Plan & implement (Phase 5).** Drafts an implementation plan for your **approval**, then applies the approved changes.
+7. **Commit (Phase 6).** Suggests a commit message — reusing **`commit-suggest`** when it's installed.
+8. **Extract rules (Phase 7).** Distills durable rules from what was applied/rejected into `docs/pr-review-rules.md` and points your conventions file at them.
+
+> It **never posts replies** to the forge and **never commits** without your say-so — suggested replies are shown inline only so you can copy them yourself.
 
 **Install:**
 
