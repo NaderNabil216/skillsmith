@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/NaderNabil216/skillsmith/main/assets/skillsmith-readme.png" alt="skillsmith — one catalog of AI-agent skills that install into any CLI agent (Claude, Codex, Gemini, Kimi, GLM, opencode); versioned and kept in sync" width="900" />
+
 # 🛠️ skillsmith
 
 **One catalog of AI-agent skills. Install them into _any_ CLI agent. Keep them in sync.**
