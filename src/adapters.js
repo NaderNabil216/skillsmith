@@ -8,7 +8,7 @@
 //             `null` means the agent auto-discovers the folder (no index needed).
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { pathExists } from './util.js';
+import { pathExists, validateSkillName, assertWithin } from './util.js';
 
 export const AGENTS = {
   'claude-code': { label: 'Claude / Claude Code', dir: '.claude/skills', index: null },
@@ -30,6 +30,15 @@ export function getAgent(id) {
     );
   }
   return a;
+}
+
+// Resolve where a skill folder lives for an agent, with the name validated and
+// the result proven to stay inside the project root. This is the single choke
+// point every install/remove/sync path goes through before touching the disk.
+export function skillDest(projectRoot, agent, name) {
+  validateSkillName(name);
+  const dest = path.join(projectRoot, agent.dir, name);
+  return assertWithin(projectRoot, dest);
 }
 
 const MARK_START = '<!-- skillsmith:start (managed — do not edit by hand) -->';
