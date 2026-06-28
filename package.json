@@ -1,6 +1,6 @@
 {
   "name": "@nadernabil216/skillsmith",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "skillsmith — a tool that carries a catalog of reusable AI-agent skills and installs any of them into the CLI agent you're using through a single line. One catalog, any agent (Claude, Codex, Gemini, Kimi, GLM, opencode), versioned and kept in sync.",
   "type": "module",
   "bin": {
