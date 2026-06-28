@@ -134,6 +134,8 @@ skillsmith agents
 | `remove <skill...>` | per‑skill | Uninstall skills and update the index |
 | `update [skill...]` | whole list | Upgrade to the latest catalog, then re-sync installed skills |
 | `sync` | whole list | Reproduce the lockfile state (e.g. after `git clone`) |
+| `restore [id]` | — | Restore a folder from the trash (no id ⇒ list; `--last` ⇒ newest) |
+| `trash list\|empty` | — | Inspect or clear the managed trash |
 | `agents` | — | List supported target agents |
 | `version` | — | Print the installed catalog version |
 
@@ -145,8 +147,35 @@ skillsmith agents
 | `-g, --global` | all | Operate on your home dir (`~`) instead of the current project |
 | `--all` | `add` | Install every skill in the catalog |
 | `--no-self-upgrade` | `update` | Re-sync only; skip the npm self-upgrade step |
+| `--dry-run` | `add`, `remove`, `sync`, `update` | Print what would change; touch nothing on disk |
+| `-y, --yes` | `add`, `remove`, `sync`, `update` | Skip the confirmation prompt (required when non-interactive) |
+| `--force` | `restore` | Overwrite an existing target when restoring |
+| `--last` | `restore` | Restore the most recently trashed entry |
+| `--older-than <days>` | `trash empty` | Only drop entries older than N days |
 
 > **Mental model:** `add` / `remove` change *what you've selected* (they edit the lockfile). `sync` *reproduces* the lockfile as‑is. `update` *advances* it to the latest catalog. Each command does exactly one thing.
+
+---
+
+## 🛡️ Safety & design
+
+skillsmith writes files on your machine, so it's built to be a careful guest — and to be *verifiable* rather than merely trusted:
+
+- **Zero runtime dependencies.** It uses only the Node standard library — see [`package.json`](./package.json) (no `dependencies` block). There is no `node_modules` tree to audit and no transitive supply-chain surface.
+- **No `curl | bash`, no `sudo`.** Install is plain `npx` or `npm install -g`. It never asks for elevated privileges, never edits your shell rc files, never touches system paths.
+- **Scoped writes, guarded.** Skill folders only ever land under the target agent's directory (e.g. `.claude/skills/<name>/`). Skill names are validated and every destination is checked to be inside the project root, so a malformed name can't escape via `../`. Symlinked destinations are refused.
+- **Reversible deletes.** Overwriting or removing a skill never permanently deletes it — the old folder is **moved to `~/.skillsmith/trash`** and can be brought back with `skillsmith restore`. This works identically on **macOS, Windows and Linux** (it's a self-managed directory, deliberately not the OS Recycle Bin, which would require a third-party package and reintroduce supply-chain risk).
+- **No surprise mutations.** Use `--dry-run` to preview any command without touching disk. Writing to your home directory (`--global`) or removing skills asks for confirmation, and refuses to run non-interactively (CI, pipes) unless you pass `--yes`.
+- **Signed releases.** Published with [npm provenance attestations](https://docs.npmjs.com/generating-provenance-statements) linking each tarball to the GitHub Actions run that built it.
+
+```bash
+skillsmith add commit-suggest --global --dry-run   # preview, change nothing
+skillsmith restore                                 # list what's recoverable
+skillsmith restore --last                          # undo the last removal/overwrite
+skillsmith trash empty --older-than 30             # housekeeping
+```
+
+> Trash entries older than 30 days are pruned automatically on the next run.
 
 ---
 
