@@ -199,7 +199,7 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with two skills that **pair together** — `process-pr-comments` calls `commit-suggest` at its commit step.
+Run `skillsmith list` for the live set. Today the catalog ships with three skills: two that **pair together** (`process-pr-comments` calls `commit-suggest` at its commit step) and one OpenClaw plugin workflow skill.
 
 ---
 
@@ -256,6 +256,27 @@ npx @nadernabil216/skillsmith add commit-suggest
 
 ```bash
 npx @nadernabil216/skillsmith add process-pr-comments
+```
+
+---
+
+### 🐦 `tweetclaw-openclaw`
+
+> Configure and use TweetClaw for approval-gated X/Twitter workflows inside OpenClaw.
+
+**Why it matters:** X/Twitter automation skills often need a safer execution path than raw browser clicks. This skill keeps TweetClaw setup, tool allowance, runtime inspection, credential handling, and explicit approval checks in one reusable workflow.
+
+**How it handles its work:**
+
+1. **Installs TweetClaw** through OpenClaw with the canonical npm source selector.
+2. **Configures credentials** from user-provided environment values without printing or committing secrets.
+3. **Checks tool access** with OpenClaw runtime inspection commands before action use.
+4. **Gates write-like actions** behind a clear handoff checklist covering account, tool, target, draft/query, evidence, expected result, and approval.
+
+**Install:**
+
+```bash
+npx @nadernabil216/skillsmith add tweetclaw-openclaw
 ```
 
 ---
