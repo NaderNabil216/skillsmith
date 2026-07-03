@@ -1,6 +1,6 @@
 ---
 name: process-pr-comments
-description: Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. "process PR comments", "address review feedback on PR/MR 123", "apply PR review comments", "work through MR X". Detects the forge (CLI-first, REST fallback), sets up the branch, scores unresolved comments against the actual code, gets per-comment approval, plans and implements fixes, suggests a commit message, and extracts reusable rules.
+description: Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. "process PR comments", "address review feedback on PR/MR 123", "apply PR review comments", "work through MR X". Detects the forge (CLI-first, REST fallback), sets up the branch, scores unresolved comments against the actual code, gets per-comment approval (or one-shot auto-apply), plans and implements fixes, suggests a commit message, and extracts reusable rules.
 ---
 
 # Process PR / MR Review Comments
@@ -46,7 +46,7 @@ End-to-end workflow for addressing unresolved review comments on a **GitHub PR, 
   - [ ] Filter to unresolved + walk thread tree
 - [ ] Phase 4 — Score, present & decide
   - [ ] Score & code-validate all (internal)
-  - [ ] Present & decide, batch by batch
+  - [ ] Present & decide (batches · auto mode: summary table)
 - [ ] Phase 5 — Implementation plan (draft → approval)
 - [ ] Phase 6 — Commit message
 - [ ] Phase 7 — Extract rules & learn
@@ -220,6 +220,10 @@ Prefer the **CLI** (`ACCESS=cli`). Without one, call the same endpoints with `cu
 
 1. **Ask the user for the `<PR|MR>` number and wait — this is the mandatory entry point.** Never infer it from the current branch or a CLI default: the number drives which branch Phase 2 checks out, so even if the current branch has an open PR/MR, still ask.
 
+   In the **same prompt**, ask the processing mode and store `MODE`:
+   - **Review each** (`MODE=review`, default) — every comment presented individually for approval (Steps 11–12).
+   - **Auto-apply** (`MODE=auto`) — no per-comment approval; all valid comments applied, gated only by the Phase 5 plan (see *Auto-apply mode* in Phase 4).
+
 2. Fetch metadata via the **Forge adapter** — one CLI command when `ACCESS=cli`, else the REST endpoint piped through `jq` so only needed fields enter context.
 
 3. Extract:
@@ -291,7 +295,7 @@ Score every unresolved comment **1–5**:
 | 2 | Low — subjective preference or minor nit |
 | 1 | Invalid — misunderstanding, outdated context, or factually incorrect |
 
-**Validate against the actual code (required — never score on comment text alone).** For **every** comment, open the code it refers to and judge against what it *actually does*:
+**Validate against the actual code (required in both modes — never score on comment text alone; auto-apply is never blind-apply).** For **every** comment, open the code it refers to and judge against what it *actually does*:
 - **Inline:** `Read` the file at the anchor `path` around `line` (offset/limit, ±~10 lines) — never whole files.
 - **General:** locate the referenced code/area.
 
@@ -307,7 +311,25 @@ Consult `CONVENTIONS_FILE` if available — **`grep` it for keywords relevant to
 
 Sort by score descending and number **locally 1…N in that order**; reference comments only as `Comment #N` — **never the forge's internal ID**. This step is **internal analysis, no user-facing output** — details print batch by batch in Step 11. Per-comment `Read`s can run in parallel; keep them in the main agent except on large PRs/MRs (see *Concurrency*), and keep any comment needing interactive design-tool setup in the main agent.
 
-### Step 11 — Present each batch's comments (as messages)
+### Auto-apply mode (`MODE=auto`) — replaces Steps 11–12
+
+Step 10 has already scored and code-validated everything; now decide automatically instead of presenting blocks and asking per comment:
+
+- **Decisions:** score 2–5 → `approved` · score 1 (invalid) → `skipped`.
+- **Print one compact summary table** — one row per comment, with enough context for the user to locate and re-read the thread on the forge:
+
+  | # | Score | Location | Author | Comment (gist) | Decision |
+  |---|---|---|---|---|---|
+  | 1 | 5 | `src/auth/Session.kt:42` | omar | Token not cleared on logout | Apply |
+  | 2 | 1 | general | sayed | Add caching for user lookups | Skip — invalid: `UserCache` already added in this PR |
+
+  Columns: local `#` · score · `path:line` (or `general`) · author · a ≤10-word gist of what the comment asks · decision, where every `Skip` carries a brief reason.
+- **Suggested replies:** generate only for the skipped (invalid) comments and print them under the table so the user can answer the reviewer — none for applied ones.
+- **Design comments:** don't block on interactive design-tool setup — validate from code only and mark the row *(not design-verified)*; carry the flag into the Phase 5 plan.
+
+Then go straight to Phase 5 — its plan approval is the single gate in this mode.
+
+### Step 11 — Present each batch's comments (`MODE=review`, as messages)
 
 Work through the sorted comments in **batches of up to 4** (highest score first). Per batch: print every comment's full detail block as a normal message, then ask for decisions on that batch (Step 12), then continue. Printing details as messages — **not** inside the picker — guarantees nothing is truncated.
 
@@ -361,6 +383,7 @@ Approved comments to implement:
    - Order tasks by score (highest first); group changes touching the same file.
    - Per approved comment: exact file(s), nature of the change, and which `CONVENTIONS_FILE` rule it satisfies (if applicable).
    - Final validation step using `VALIDATION_CMD` (ask for it now if deferred in 0D). Run it in the background (see *Concurrency*).
+   - **Auto mode:** also list the auto-skipped invalid comments with their reasons and flag any *(not design-verified)* items — nothing disappears silently; this approval is the only gate.
 
 15. Present the plan and wait for approval before any edits (Claude Code: `ExitPlanMode`).
 
