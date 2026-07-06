@@ -1,6 +1,6 @@
 {
   "name": "@nadernabil216/skillsmith",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "skills": [
     {
       "name": "commit-suggest",
@@ -14,6 +14,14 @@
       "name": "process-pr-comments",
       "description": "Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. \"process PR comments\", \"address review feedback on PR/MR 123\", \"apply PR review comments\", \"work through MR X\". Detects the forge, prefers the official CLI (gh/glab/bb) with REST fallback, then handles branch checkout, fetching updates, scoring unresolved comments validated against the actual code (and against the design tool for design comments), showing each comment with a code snippet, getting user approval per comment, generating an implementation plan, suggesting a commit message, and extracting reusable rules into a standalone rules file. Capability-based steps with a Claude Code tool-mapping section.",
       "version": "6cc31855",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "review-pr-private",
+      "description": "Universal PR review workflow for any AI assistant to verify architecture, clean code, SOLID design, and test quality in any programming language. Two modes: simple (default) reviews the diff with severity-ranked findings; advanced adds existing-comment dedup (never repeat what reviewers already said — agree/reply/react instead), security/performance/dependency review, and optional build+test verification in a temporary worktree. Use when asked to \"review PR 123\", \"review this MR\", \"review this branch against develop\", \"compare and review feature/x\", or \"do a deep/advanced/thorough review of this PR\".",
+      "version": "2b5ce6ca",
       "files": [
         "SKILL.md"
       ]
