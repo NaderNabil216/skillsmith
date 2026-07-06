@@ -24,7 +24,7 @@ it never runs `git commit`. Present the message and let the user decide.
    the message must reflect the *real* change, not a guess from filenames.
 
 2. **Derive the ticket ID** from the branch name (branches look like
-   `feature/EPTA-47-...`):
+   `feature/PROJ-47-...`):
 
    ```bash
    git rev-parse --abbrev-ref HEAD | grep -oE '[A-Z]+-[0-9]+' | head -1
@@ -44,7 +44,7 @@ it never runs `git commit`. Present the message and let the user decide.
 - End the message with the required co-author trailer only if the user asks to
   actually commit — suggestions stay clean.
 - This repo's convention puts the ticket ID in `[BRACKETS]`; recent history uses
-  prefixes like `[EPTA-24]`, `[EPTA-101]`.
+  prefixes like `[PROJ-24]`, `[PROJ-101]`.
 
 ---
 
@@ -65,8 +65,8 @@ Explain the "why" here, while the header focuses on the "what".
 
 ### Header
 
-- Always include the ticket ID in `[BRACKETS]` if available (e.g. `[NM-1234]`,
-  `[EPTA-26]`, `[PASSMARTHOME-10592]`).
+- Always include the ticket ID in `[BRACKETS]` if available (e.g. `[ABC-1234]`,
+  `[PROJ-26]`, `[XYZ-10592]`).
 - Use **imperative form** — start with a present-tense verb: `Add`, `Fix`,
   `Refactor`, `Update`, `Remove`, `Migrate`. Never use past tense (`Fixed`,
   `Fixes`).
@@ -81,7 +81,7 @@ Explain the "why" here, while the header focuses on the "what".
 - For **bug fixes**, use `**Issue**` / `**Solution**` sections:
 
   ```text
-  [PASSMARTHOME-10592] Enhance light button delay
+  [XYZ-10592] Enhance light button delay
 
   **Issue**
   When the user clicks on the light button, it takes several seconds
@@ -98,7 +98,7 @@ Explain the "why" here, while the header focuses on the "what".
 - For **new features**, use a `**Changes**` section with bullet points:
 
   ```text
-  [NM-1234] Display a banner indicating the network status
+  [ABC-1234] Display a banner indicating the network status
 
   **Changes**
   - Add an observer to detect network status
