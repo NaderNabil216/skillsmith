@@ -86,13 +86,37 @@ export async function writeJson(p, obj) {
 }
 
 // Minimal YAML frontmatter reader — only needs the flat keys we use.
+// Supports single-line values and folded/literal block scalars (`>` / `|`)
+// where indented continuation lines join the previous key.
 export function parseFrontmatter(content) {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   const out = {};
   if (!m) return out;
-  for (const line of m[1].split(/\r?\n/)) {
+  const lines = m[1].split(/\r?\n/);
+  let currentKey = null;
+  let blockScalar = null; // '>' or '|'
+  for (const line of lines) {
+    if (blockScalar && currentKey && /^\s+\S/.test(line)) {
+      const piece = line.trim();
+      out[currentKey] = blockScalar === '>'
+        ? (out[currentKey] ? out[currentKey] + ' ' + piece : piece)
+        : (out[currentKey] ? out[currentKey] + '\n' + piece : piece);
+      continue;
+    }
+    blockScalar = null;
     const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, '').trim();
+    if (!kv) {
+      currentKey = null;
+      continue;
+    }
+    currentKey = kv[1];
+    let value = kv[2].trim();
+    if (value === '>' || value === '|') {
+      blockScalar = value;
+      out[currentKey] = '';
+    } else {
+      out[currentKey] = value.replace(/^["']|["']$/g, '').trim();
+    }
   }
   return out;
 }
