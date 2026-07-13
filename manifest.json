@@ -19,6 +19,14 @@
       ]
     },
     {
+      "name": "process-pr-comments-lite",
+      "description": "Fast, autonomous version of process-pr-comments. Given a PR/MR number, it implements the review comments that are logically valid against the code, saves recurring feedback as reusable rules, and stops — no prompts, no approval gates, no commit, no commit-message step. Use when asked to quickly or automatically apply PR/MR review comments without user input, e.g. \"process PR 123 comments lite\", \"auto-apply the review comments on MR X\", \"just fix the valid PR comments\".",
+      "version": "0db13e43",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
       "name": "review-pr",
       "description": "Universal PR review workflow for any AI assistant to verify architecture, clean code, SOLID design, and test quality in any programming language. Two modes: simple (default) reviews the diff with severity-ranked findings; advanced adds existing-comment dedup (never repeat what reviewers already said — agree/reply/react instead), security/performance/dependency review, and optional build+test verification in a temporary worktree. Use when asked to \"review PR 123\", \"review this MR\", \"review this branch against develop\", \"compare and review feature/x\", or \"do a deep/advanced/thorough review of this PR\".",
       "version": "c5147e9c",
