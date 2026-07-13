@@ -1,428 +1,132 @@
 ---
 name: process-pr-comments
-description: Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. "process PR comments", "address review feedback on PR/MR 123", "apply PR review comments", "work through MR X". Detects the forge (CLI-first, REST fallback), sets up the branch, scores unresolved comments against the actual code, gets per-comment approval (or one-shot auto-apply), plans and implements fixes, suggests a commit message, and extracts reusable rules.
+description: Full PR/MR review-comment workflow for GitHub, GitLab, and Bitbucket. Use whenever the user wants to process, address, or work through pull- or merge-request review comments — e.g. "process PR comments", "address review feedback on PR/MR 123", "apply PR review comments", "work through MR X". Detects the forge (CLI-first, REST fallback), sets up the branch, scores unresolved comments against the actual code, gets per-comment approval (or one-shot auto-apply), plans and implements fixes, suggests a commit message, and (advanced) extracts reusable rules.
 ---
 
 # Process PR / MR Review Comments
 
-End-to-end workflow for addressing unresolved review comments on a **GitHub PR, GitLab MR, or Bitbucket PR**. The flow is forge-agnostic: a per-forge **Forge adapter** supplies the few commands that differ.
+End-to-end workflow for addressing unresolved review comments on a **GitHub PR, GitLab MR, or Bitbucket PR**. Forge-agnostic: a small per-forge cheat-sheet supplies the few commands that differ. Use the term **PR** for GitHub/Bitbucket and **MR** for GitLab in all user-facing text.
 
----
+## Modes
 
-## Requirements & tool mapping
+Usage: `process-pr-comments [pr-number] [simple|advanced] [review|auto]`
 
-**Runtime:** `git` + POSIX shell. Prefer the forge's official CLI (`gh` / `glab` / `bb`); otherwise `curl` + `jq` (if `jq` is missing, use the CLI's `--json`/`--jq`, or extract the minimum by hand). Steps are written as capabilities; bind them to your harness (Claude Code bindings below; elsewhere substitute equivalents, falling back to a plain numbered question where no multiple-choice UI exists):
+- **Scope** — **simple** (default): resolve → fetch → score → decide → implement → commit. **advanced** (the words "advanced", "deep", or "thorough"): also extracts reusable rules, validates design comments against the design tool, and offers a REST fallback when no CLI is present.
+- **Per-comment handling** — **review** (default): each comment is presented for approval. **auto**: valid comments are applied without per-comment approval, gated only by the plan (step 6).
 
-| Capability | Claude Code binding |
-|---|---|
-| multiple-choice question | `AskUserQuestion` (≤4 questions/call) |
-| plan approval before editing | `EnterPlanMode` → `ExitPlanMode` |
-| bounded file read · search · shell (backgroundable) | `Read` (offset/limit) · `Grep` · `Bash` (`run_in_background`) |
-| parallel independent work | subagent (Agent tool) |
-| optional live task list | `TaskCreate` / `TaskUpdate` |
-| design-tool lookup | Figma MCP (`mcp__…Figma…`) or any design integration |
-| commit-message helper | the `commit-suggest` skill (see 0E) |
+Steps tagged **[advanced]** are skipped in simple mode. Ask for the PR number and both mode choices in one prompt (step 1).
 
----
+## Working fast
 
-## Progress checklist (show throughout)
+Run independent calls together in one message; put slow commands (fetch, merge, validation build) in the background and join before the step that needs them. Never background approval prompts or file edits.
 
-**Print it once at the very start** (all pending, Phase 0 in progress) and **re-print the full tree only at the start of each phase**; within a phase a one-liner like `Phase 3/7 ▸ filtering comments` is enough. Mark finished `[✓]`, current `← in progress`, rest `[ ]`; a parent is `[✓]` only when all sub-phases are.
+## Forge cheat-sheet
 
-```
-**<PR|MR> #<id> — progress**
-- [ ] Phase 0 — Project context
-  - [ ] 0A Detect forge & repo coords
-  - [ ] 0B Access (CLI or token)  ← in progress
-  - [ ] 0C Conventions file
-  - [ ] 0D Build/validation command
-  - [ ] 0E commit-suggest skill check
-- [ ] Phase 1 — Change-request details (title/ticket, branches, description, reviewers)
-- [ ] Phase 2 — Branch setup
-  - [ ] Checkout source branch
-  - [ ] Fetch + merge target (resolve conflicts if any)
-- [ ] Phase 3 — Fetch unresolved comments
-  - [ ] Fetch threads via forge adapter
-  - [ ] Filter to unresolved + walk thread tree
-- [ ] Phase 4 — Score, present & decide
-  - [ ] Score & code-validate all (internal)
-  - [ ] Present & decide (batches · auto mode: summary table)
-- [ ] Phase 5 — Implementation plan (draft → approval)
-- [ ] Phase 6 — Commit message
-- [ ] Phase 7 — Extract rules & learn
-  - [ ] Derive & confirm candidate rules
-  - [ ] Write to docs/pr-review-rules.md
-  - [ ] Pointer in agent-instructions file (+ sync handling)
-```
+Prefer the official CLI (`gh` / `glab` / `bb`). Without one, call the same REST endpoints and filter with `jq` so only the needed fields enter context. **Always pass the explicit PR number** — never a bare command that defaults to the current branch.
 
-Omit `<id>` until Phase 1 resolves it. Keep the list to phases + sub-phases (don't expand Steps 1–22). On early exit (e.g. no unresolved comments), print reached items `[✓]` and strike the rest `~~…~~ (skipped)`. You may mirror into a harness task list, but the printed checklist is what the user reads.
-
----
-
-## Concurrency & background (speed)
-
-Overlap work with no data dependency: issue independent tool calls **in one message**, use **background Bash** for slow commands, fan out subagents only when warranted. This section is the single home for these rules — phases just reference it.
-
-- **Phase 0 detections** — 0A, 0C, 0D, 0E are independent local checks; run as parallel calls in one message.
-- **Phase 2 ∥ Phase 3** — kick off `git fetch` + `merge` in the **background** right after Phase 1, fetch + filter comments meanwhile, **join before Phase 4** (it reads the merged tree). If the background merge reports conflicts, handle them via Phase 2's conflict step first.
-- **Phase 3 pages (REST fallback only)** — with predictable offsets (e.g. Bitbucket `start=0,100,200,…`), fetch several pages in parallel and stop when one signals the last (`isLastPage`). CLIs paginate for you.
-- **Phase 4 analysis** — per-comment scoring is independent. **Default to targeted `Read`s in the main agent** — subagents re-boot context and raise *total* token cost. Fan out to subagents only on **large** PRs/MRs where main-context size is the real constraint. A comment needing *interactive* design-tool setup must stay in the main agent.
-- **Validation build (Phase 5/6)** — run the slow `VALIDATION_CMD` in the **background** and report when done.
-
-**Never background:** approval / multiple-choice prompts, and file edits during implementation. Note long background tasks in the checklist (e.g. `Phase 2 — merge (running in background)`).
-
----
-
-## Phase 0 — Auto-detect project context
-
-Run before the main workflow; auto-detect everything **silently**. Three rules: **(1) one prompt, not many** — batch every item that genuinely needs the user across 0A–0E into a single multiple-choice prompt; **(2) defer what isn't blocking** — only access (0B) blocks; an undetected validation command (0D) is asked later when first needed; **(3) summarize, don't interrogate** — print a one-line **Detected context** summary (forge · access · conventions file · validation cmd · commit-suggest) and just proceed unless something is genuinely ambiguous.
-
-### 0A — Detect the forge & repo coordinates
-
-```bash
-git remote get-url origin
-```
-
-| Host | `FORGE` | Term |
+| Forge | Meta | Unresolved comments |
 |---|---|---|
-| `github.com` or GitHub Enterprise | `github` | **PR** |
-| `gitlab.com` or self-managed GitLab | `gitlab` | **MR** |
-| a Bitbucket host (`bitbucket.org` or a `/scm/…` install) | `bitbucket` | **PR** |
-| anything else | ask the user | — |
+| **github** (`gh`) | `gh pr view <n> --json title,body,headRefName,baseRefName,reviewRequests,url` | GraphQL `reviewThreads` where `isResolved==false` + `gh api repos/{o}/{r}/issues/{n}/comments` |
+| **gitlab** (`glab`) | `glab mr view <n> -F json` | `glab api projects/:id/merge_requests/:n/discussions` — notes where `resolvable && !resolved` |
+| **bitbucket** (`bb`/REST) | `GET {BASE}/pull-requests/{n}` → `fromRef`/`toRef`/`reviewers` | `GET {BASE}/pull-requests/{n}/activities` — keep `action=="COMMENTED"` state `OPEN` (tasks: `severity=="BLOCKER"`) |
 
-Use the **term** in all user-facing text. Extract repo coordinates from the remote — `owner`/`repo` (GitHub/GitLab), `project`/`repo` (Bitbucket Server). Handle SSH and HTTPS forms, **strip trailing `.git`**, **drop `user@`** userinfo.
+**[advanced] REST fallback (no CLI):** use a token from an env var (`GH_TOKEN` / `GITHUB_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN`) in the auth header — GitHub `Authorization: Bearer` + `Accept: application/vnd.github+json`, GitLab `PRIVATE-TOKEN`, Bitbucket `Authorization: Bearer`. Never `echo` a token (it leaks into the transcript). If none is set, ask the user for a token or to paste the PR details and comment threads by hand. **Bitbucket = Server / Data Center only** — Bitbucket Cloud uses a different API and is unsupported; confirm the REST base URL with the user.
 
-**Bitbucket — confirm with the user.** This skill targets **Bitbucket Server / Data Center**; ask the user to confirm it's Server and confirm the REST base URL (offer the derived default). **Bitbucket Cloud uses a different API and is not supported** — tell the user and stop, unless they supply a Server-compatible base URL. Derived default (account for a context path, e.g. `…/bitbucket/scm/…` → `…/bitbucket/rest/…`, and personal repos `~username` — keep the tilde):
-```
-BASE_URL = https://{HOST}{CONTEXT_PATH}/rest/api/1.0/projects/{PROJECT}/repos/{REPO}
-```
+## Steps
 
-### 0B — Resolve access (CLI-first, REST fallback)
+### 1. Resolve inputs & context
 
-**Step 1 — CLI.** Prefer the official CLI (auth, pagination, JSON handled):
-```bash
-command -v gh   && gh   auth status   # github
-command -v glab && glab auth status   # gitlab
-command -v bb                          # bitbucket (server)
-```
-If present and authenticated: `ACCESS=cli`, skip token/BASE_URL handling entirely, go to 0C.
+**Ask once, up front** (single prompt): the **PR/MR number** — mandatory, never inferred from the current branch — and the **mode** choices (scope + per-comment handling). Then:
 
-**Step 2 — REST token (fallback).** Use a single placeholder **`AUTH_REF`** injected into the auth header (header form per forge — see Forge adapters) — either an env var (`$<NAME>`) or a file read (`$(cat "$TOKEN_FILE")`). Test common env vars **without printing the value** (never `echo` a token — it leaks into the transcript/history):
-```bash
-for v in GH_TOKEN GITHUB_TOKEN GITLAB_TOKEN GL_TOKEN BITBUCKET_TOKEN BITBUCKET_ACCESS_TOKEN BB_TOKEN STASH_TOKEN; do
-  [ -n "${!v}" ] && { echo "$v is set"; break; }
-done
-```
-If one is set, remember its **name**, treat `AUTH_REF` as `$<thatname>`, go to 0C.
+- **Detect the forge** from `git remote get-url origin`: `github.com` → github, `gitlab.com` or self-managed → gitlab, a Bitbucket host → bitbucket. Strip a trailing `.git` and any `user@`. Anything else → ask the user.
+- **Access:** run `command -v gh` / `glab` / `bb` and check auth (`gh auth status`, `glab auth status`). If a CLI is present and authenticated, use it. Otherwise fall back to the **[advanced] REST fallback** above.
+- **Fetch PR metadata** via the cheat-sheet and extract: title (parse a ticket id — `[A-Z]+-[0-9]+` Jira or `#NNN` issue ref), source branch, target branch, description, and reviewers.
 
-**Step 3 — Ask the user.** If none found, ask a multiple-choice prompt (header `Forge auth`, question *"No forge token env var found — how do you want to authenticate?"*), batching any other pending Phase-0 questions into the same prompt:
+Everything else is looked up **only when first needed**, not now:
+- **Conventions file** (used for scoring in step 4) — first match of `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md`, `.github/copilot-instructions.md`, `.cursorrules`, `CONTRIBUTING.md`; none → fall back to general best practices.
+- **Validation command** (used in step 6) — inferred from `package.json` / `build.gradle(.kts)` / `Makefile` / `Cargo.toml` / `pubspec.yaml` / `Podfile`. Prefer a command the conventions file prescribes.
+- **`commit-suggest` skill** (used in step 7) — `.claude/skills/commit-suggest/SKILL.md` locally or under `$HOME`.
 
-- **"It's under another name"** — ask for the exact name, verify without printing:
-  ```bash
-  NAME=MY_PAT
-  [ -n "${!NAME}" ] && echo "$NAME is set" || echo "$NAME is empty"
-  ```
-  On success, `AUTH_REF` = `${!NAME}`.
+### 2. Set up the branch
 
-- **"Enter the token now"** — the user pastes it; store it both ways:
-  1. **This session** — restricted-permission file, referenced in every later call so the literal token never appears in a subsequent API command (it unavoidably appears once in this write and in the pasted message):
-     ```bash
-     TOKEN_FILE="${SCRATCHPAD:-${TMPDIR:-/tmp}}/.forge_token"
-     ( umask 077; printf '%s' '<pasted-token>' > "$TOKEN_FILE" )
-     ```
-     `AUTH_REF` = `$(cat "$TOKEN_FILE")`.
-  2. **Future sessions** — append an `export` to the shell profile using the forge's canonical name (`GH_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN`), reading the value back from the file, de-duped:
-     ```bash
-     PROFILE="$HOME/.zshrc"; VAR=BITBUCKET_TOKEN   # forge's canonical name
-     grep -q "^export $VAR=" "$PROFILE" 2>/dev/null \
-       || printf 'export %s=%s\n' "$VAR" "$(cat "$TOKEN_FILE")" >> "$PROFILE"
-     ```
-  Warn **once**: pasting puts the token in the transcript; the profile line only affects **new** shells.
-
-- **"Skip"** — fall through to Step 4.
-
-**Step 4 — Manual fallback (no access).** Phases 1 and 3 cannot fetch. Ask the user to paste: title, description, source & target branches, **and the unresolved comment threads** (text, author, file/line for inline ones). Code-validation (Phase 4) still works against the local checkout; resolved state can't be detected — work only from what's pasted.
-
-### 0C — Find the project conventions file
+Checkout the source branch if not already on it (tell the user inline, no confirmation), then fetch and merge the target so a stale branch doesn't hide conflicts:
 
 ```bash
-for f in AGENTS.md CLAUDE.md .claude/CLAUDE.md .github/copilot-instructions.md \
-         .cursor/rules .cursorrules .windsurfrules CONTRIBUTING.md docs/ARCHITECTURE.md; do
-  [ -f "$f" ] && echo "$f" && break
-done
-```
-Store the first match as `CONVENTIONS_FILE`; if none, `CONVENTIONS_FILE=none` (evaluations fall back to general best practices).
-
-### 0D — Detect the build/validation command
-
-```bash
-[ -f "build.gradle" ] || [ -f "build.gradle.kts" ]   # → Gradle
-[ -f "package.json" ]                                  # → Node (npm/yarn/pnpm)
-[ -f "Makefile" ]                                      # → Make
-[ -f "Podfile" ]                                       # → Xcode/CocoaPods
-[ -f "pubspec.yaml" ]                                  # → Flutter/Dart
-[ -f "Cargo.toml" ]                                    # → Rust
+git fetch origin && git merge origin/<target-branch>
 ```
 
-For Gradle, grep build files for lint/format plugins — **don't** run `./gradlew tasks --all` (full configuration, can take a minute+):
-```bash
-grep -rEl "spotless|detekt|ktlint" --include="*.gradle" --include="*.gradle.kts" . 2>/dev/null
-```
+A clean merge auto-creates a merge commit — expected; do not push. May run in the background alongside step 3; join before step 4. On conflicts: show `git diff --name-only --diff-filter=U`, ask whether to resolve them for the user or let them do it; if resolving, follow the conventions file, then `git add <files> && git merge --continue`.
 
-Compose `VALIDATION_CMD` running formatting + static analysis, e.g. `./gradlew spotlessApply detekt` · `npm run lint && npm run build` · `make lint`. If `CONVENTIONS_FILE` prescribes a validation command, use it verbatim; otherwise default to **without** Gradle `clean` for speed, adding it only for broad changes that risk stale artifacts. If the build system is unclear, **don't ask now** — defer to when `VALIDATION_CMD` is first needed (start of Phase 5).
+### 3. Fetch unresolved comments
 
-### 0E — Check for a commit-message helper
+Via the cheat-sheet, fetch all **unresolved** threads and filter every response before it enters context (CLI `--json`/`--jq`, or `curl | jq`; REST fallback follows the forge's pagination). For each thread, walk the full tree and capture:
 
-```bash
-ls .claude/skills/commit-suggest/SKILL.md \
-   "$HOME/.claude/skills/commit-suggest/SKILL.md" 2>/dev/null && echo "found"
-```
-`HAS_COMMIT_SUGGEST=true` if either exists (on other harnesses, substitute their commit-message helper). Used in Phase 6.
+- **author + body** of the original comment **and each reply** — the real request is often in a reply.
+- **anchor** — `path` + `line` for inline comments; none for general ones.
+- **open tasks** where the forge has them (Bitbucket `severity=="BLOCKER"`).
+- Skip bot / system comments.
 
----
+**Early exit:** if nothing is unresolved, make sure any background merge finished cleanly, then report *"No unresolved comments found on <PR|MR> #{n} — nothing to address."* and stop.
 
-## Forge adapters
+### 4. Score & validate each comment
 
-Prefer the **CLI** (`ACCESS=cli`). Without one, call the same endpoints with `curl` against the REST base + auth header, then filter with `jq` so only needed fields enter context:
-
-| Forge | REST base | Auth header |
-|---|---|---|
-| github | `https://api.github.com` (Enterprise `https://{host}/api/v3`; GraphQL `…/graphql`) | `Authorization: Bearer ${AUTH_REF}` + `Accept: application/vnd.github+json` |
-| gitlab | `https://gitlab.com/api/v4` (self-managed `https://{host}/api/v4`) | `PRIVATE-TOKEN: ${AUTH_REF}` |
-| bitbucket | `${BASE_URL}` (from 0A) | `Authorization: Bearer ${AUTH_REF}` |
-
-**Always pass the explicit number from Phase 1** — never a bare `gh pr view` / `glab mr view` defaulting to the current branch.
-
-### GitHub — `gh` (term: PR)
-- **Meta:** `gh pr view <n> --json title,body,headRefName,baseRefName,reviewRequests,url` · REST `GET /repos/{owner}/{repo}/pulls/{n}`
-- **Unresolved inline threads:** GraphQL `reviewThreads`, filtered to `isResolved==false`:
-  ```bash
-  gh api graphql -f query='{repository(owner:"{owner}",name:"{repo}"){pullRequest(number:{n}){
-    reviewThreads(first:100){nodes{isResolved path line
-      comments(first:50){nodes{author{login} body}}}}}}}' \
-    | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)]'
-  ```
-- **General (non-inline) comments:** `gh api repos/{owner}/{repo}/issues/{n}/comments`
-- **Tasks:** none — the unit is the unresolved thread (reviewer suggestions appear as ```suggestion fences).
-
-### GitLab — `glab` (term: MR)
-- **Meta:** `glab mr view <iid> -F json` · REST `GET /projects/:id/merge_requests/:iid`
-- **Unresolved threads:** `glab api projects/:id/merge_requests/:iid/discussions` — keep notes where `resolvable==true && resolved==false`; anchor = `position.new_path` / `position.new_line`; `notes[]` is the thread.
-- **Tasks:** map to unresolved discussions.
-
-### Bitbucket — `bb` / REST (term: PR)
-- **Meta:** `GET {BASE_URL}/pull-requests/{id}` → `fromRef.displayId` (source), `toRef.displayId` (target), `reviewers[].user.name`.
-- **Unresolved threads + tasks:** `GET {BASE_URL}/pull-requests/{id}/activities` (paginate `start` / `isLastPage`); keep `action=="COMMENTED"` with `state=="OPEN"`; recurse `comment.comments[]`; **tasks** are comments with `severity=="BLOCKER"` (state `OPEN`/`RESOLVED`); anchor = `commentAnchor.path` / `commentAnchor.line`. (See the `jq` filter in Phase 3.)
-
----
-
-## Phase 1 — Fetch change-request details
-
-1. **Ask the user for the `<PR|MR>` number and wait — this is the mandatory entry point.** Never infer it from the current branch or a CLI default: the number drives which branch Phase 2 checks out, so even if the current branch has an open PR/MR, still ask.
-
-   In the **same prompt**, ask the processing mode and store `MODE`:
-   - **Review each** (`MODE=review`, default) — every comment presented individually for approval (Steps 11–12).
-   - **Auto-apply** (`MODE=auto`) — no per-comment approval; all valid comments applied, gated only by the Phase 5 plan (see *Auto-apply mode* in Phase 4).
-
-2. Fetch metadata via the **Forge adapter** — one CLI command when `ACCESS=cli`, else the REST endpoint piped through `jq` so only needed fields enter context.
-
-3. Extract:
-   - **Title** — parse a ticket id: `[A-Z]+-[0-9]+` (Jira) **or** `#NNN` (issue ref); if none, omit the prefix in commit messages.
-   - **Source branch** / **Target branch**.
-   - **Description** — extra context.
-   - **Reviewers** — store as `REVIEWERS`.
-
----
-
-## Phase 2 — Branch setup
-
-4. `git rev-parse --abbrev-ref HEAD`
-
-5. If not on the source branch, check it out automatically (no confirmation), telling the user inline: *"Switching to `<source-branch>`…"* → `git checkout <source-branch>`
-
-6. Fetch and merge the target — never skip this; stale branches cause hidden conflicts later:
-   ```bash
-   git fetch origin
-   git merge origin/<target-branch>
-   ```
-   A clean merge auto-creates a **merge commit** — expected, and distinct from the "never commit without instruction" rule (which covers the feature/fix commit after addressing comments). Do not push. May run in the **background** alongside Phase 3; join before Phase 4 (see *Concurrency*).
-
-7. On conflicts:
-   - Show conflicted files: `git diff --name-only --diff-filter=U`
-   - Ask: **"There are merge conflicts in the following files. Should I attempt to resolve them, or would you prefer to resolve them yourself?"**
-   - If resolving: fix each guided by `CONVENTIONS_FILE`, then `git add <files> && git merge --continue`.
-   - If the user resolves manually, pause until they say done.
-
----
-
-## Phase 3 — Fetch unresolved review comments
-
-8. Via the **Forge adapter**, fetch all **unresolved** threads/comments (CLI preferred; REST follows the forge's pagination):
-   - **github** — `reviewThreads.isResolved == false` (inline) + general issue comments
-   - **gitlab** — notes where `resolvable && !resolved`
-   - **bitbucket** — `action=="COMMENTED"` with `state=="OPEN"` (+ tasks `severity=="BLOCKER"`)
-
-   **Token-saving:** filter every API response before it enters context — CLI `--json`/`--jq`, or `curl | jq`. Bitbucket example (loop pages until `isLastPage`):
-   ```bash
-   curl -s -H "Authorization: Bearer ${AUTH_REF}" "{BASE_URL}/pull-requests/{id}/activities?limit=100&start={start}" \
-     | jq -c '[.values[] | select(.action=="COMMENTED") | .comment
-              | {id, author: .author.name, state, severity, text,
-                 anchor: (.commentAnchor // {} | {path, line}),
-                 replies: [.comments[]? | {author: .author.name, state, text}]}]'
-   ```
-
-9. For each kept thread, **walk the full tree** and capture:
-   - **author** + **body** of the original comment and **each reply** — the actionable request is often in a *reply*.
-   - **anchor** — `path` + `line` for **inline** comments; **general** comments have none.
-   - **thread context** — reply count and **tasks** with open/resolved state (Bitbucket `severity:"BLOCKER"`; GitHub/GitLab map to the unresolved thread itself).
-   - Skip bot/system comments.
-
-**Early exit:** if nothing is unresolved: first ensure any backgrounded Phase 2 merge finished cleanly (not mid-conflict) — resolve or report — then report *"No unresolved comments found on <PR|MR> #{id} — nothing to address."* and end.
-
----
-
-## Phase 4 — Score, present, and batch-approve
-
-### Step 10 — Score all comments upfront
-
-Score every unresolved comment **1–5**:
+Score every comment **1–5** and **validate against the actual code — never on comment text alone** (this holds in auto mode too; auto is not blind-apply):
 
 | Score | Meaning |
-|-------|---------|
-| 5 | Critical — architectural violation, correctness bug, or security issue |
-| 4 | High — significant code quality or maintainability problem |
-| 3 | Medium — style/naming issue or clearly valid improvement |
+|---|---|
+| 5 | Critical — architecture violation, correctness bug, or security issue |
+| 4 | High — significant quality or maintainability problem |
+| 3 | Medium — style / naming, or a clearly valid improvement |
 | 2 | Low — subjective preference or minor nit |
-| 1 | Invalid — misunderstanding, outdated context, or factually incorrect |
+| 1 | Invalid — misunderstanding, outdated context, or factually wrong |
 
-**Validate against the actual code (required in both modes — never score on comment text alone; auto-apply is never blind-apply).** For **every** comment, open the code it refers to and judge against what it *actually does*:
-- **Inline:** `Read` the file at the anchor `path` around `line` (offset/limit, ±~10 lines) — never whole files.
-- **General:** locate the referenced code/area.
+For each comment, `Read` the referenced code (inline: around the anchor line, ±~10 lines — never whole files; general: locate the area) and decide whether the issue genuinely exists or is already handled / outdated / a misread. If the code contradicts the comment, score **1** and note why. Keep the snippet — step 5 reuses it. If a conventions file exists, `grep` it for keywords relevant to the comment and read only the matched sections (never the whole file). Sort by score descending, number locally `1…N`, and refer to comments only as `Comment #N` (never the forge's internal id). This step is internal — no user-facing output yet.
 
-Decide: does the issue genuinely exist, or is it already handled / outdated / a misread? If the code contradicts the comment, score **1** and capture why. Cite concrete code in the Evaluation; keep the snippet — Step 11 reuses it.
+**[advanced] Design comments:** for comments about visual correctness (spacing, padding, color, typography, sizing, alignment, layout, or that name a screen / mockup), validate the implementation against the design tool (e.g. Figma MCP). If it's unavailable, tell the user and ask them to connect it; if the exact screen can't be resolved, ask for its URL. Fold the result into the score and evaluation.
 
-**Design comments — only when relevant.** If a comment concerns visual/design correctness (spacing, padding, margins, color, typography, sizing, alignment, layout, or names the design/a screen/a mockup), validate the implementation against the design — for these comments only:
-1. Check for a **design-tool integration** (Claude Code: Figma MCP, tools under `mcp__…Figma…`).
-2. If unavailable, tell the user it's needed for this comment and ask them to connect it (`claude mcp add`), then continue.
-3. If available but the exact screen can't be resolved, ask for the screen/node URL — only when you genuinely can't find it.
-4. Compare implemented UI against the design **and** the comment's suggestion; fold into the score and Evaluation (e.g. *"design shows 16dp padding; code uses 8dp — comment is valid"*).
+### 5. Present & decide
 
-Consult `CONVENTIONS_FILE` if available — **`grep` it for keywords relevant to the comment and read only matched sections; never read it whole** (often 1000+ lines). It's the source of truth for violation vs. preference: a comment contradicting a rule scores 1; one enforcing a rule scores 4–5.
-
-Sort by score descending and number **locally 1…N in that order**; reference comments only as `Comment #N` — **never the forge's internal ID**. This step is **internal analysis, no user-facing output** — details print batch by batch in Step 11. Per-comment `Read`s can run in parallel; keep them in the main agent except on large PRs/MRs (see *Concurrency*), and keep any comment needing interactive design-tool setup in the main agent.
-
-### Auto-apply mode (`MODE=auto`) — replaces Steps 11–12
-
-Step 10 has already scored and code-validated everything; now decide automatically instead of presenting blocks and asking per comment:
-
-- **Decisions:** score 2–5 → `approved` · score 1 (invalid) → `skipped`.
-- **Print one compact summary table** — one row per comment, with enough context for the user to locate and re-read the thread on the forge:
-
-  | # | Score | Location | Author | Comment (gist) | Decision |
-  |---|---|---|---|---|---|
-  | 1 | 5 | `src/auth/Session.kt:42` | omar | Token not cleared on logout | Apply |
-  | 2 | 1 | general | sayed | Add caching for user lookups | Skip — invalid: `UserCache` already added in this PR |
-
-  Columns: local `#` · score · `path:line` (or `general`) · author · a ≤10-word gist of what the comment asks · decision, where every `Skip` carries a brief reason.
-- **Suggested replies:** generate only for the skipped (invalid) comments and print them under the table so the user can answer the reviewer — none for applied ones.
-- **Design comments:** don't block on interactive design-tool setup — validate from code only and mark the row *(not design-verified)*; carry the flag into the Phase 5 plan.
-
-Then go straight to Phase 5 — its plan approval is the single gate in this mode.
-
-### Step 11 — Present each batch's comments (`MODE=review`, as messages)
-
-Work through the sorted comments in **batches of up to 4** (highest score first). Per batch: print every comment's full detail block as a normal message, then ask for decisions on that batch (Step 12), then continue. Printing details as messages — **not** inside the picker — guarantees nothing is truncated.
+**review mode (default):** work through the sorted comments in **batches of up to 4** (highest score first). Print each comment as a full message — not inside the picker, so nothing truncates:
 
 ```
 ─────────────────────────────────────────────
 Comment #<N> of <total>  [Score: <X>/5]  ·  <author>
-File: <path> (line <line>)        ← omit if comment has no anchor
-Thread: <e.g. "2 replies · 1 open task">   ← omit if no sub-comments and no tasks
+File: <path> (line <line>)        ← omit if no anchor
+Thread: <e.g. "2 replies · 1 open task">   ← omit if none
 
 <author>: "<original comment>"
-  ↳ <reply-author>: "<reply>"      ← one line per reply, in order; omit if no replies
+  ↳ <reply-author>: "<reply>"      ← one line per reply, in order; omit if none
 
 Code (<path>:<line>):
 > <diff-style snippet — anchored line marked, ±5 lines of context>   ← omit if no code location
 
-Evaluation: <2–3 sentences: what the real code does and whether the comment holds. If the thread has replies, name who said what and conclude which position is correct and why — grounded in the code / CONVENTIONS_FILE / the design, not seniority.>
-
-Suggested reply: <short, courteous, Markdown + plain simple human English — acknowledge if valid, or explain why if already handled / outdated / wrong>
+Evaluation: <2–3 sentences: what the real code does and whether the comment holds. If there are replies, name who said what and conclude who's right and why — grounded in code / conventions / the design, not seniority.>
+Suggested reply: <short, courteous, plain English — acknowledge if valid, or explain why if already handled / outdated / wrong>
 ```
 
-Every block is complete — full thread, snippet (diff-preview style, reusing the Step 10 lines), and mandatory **Evaluation** + **Suggested reply**, never omitted. For score **1 (Invalid)**, add a `Validity issue: <specific reason>` line directly above the Suggested reply.
+For score **1**, add a `Validity issue: <reason>` line directly above the suggested reply. Then ask for decisions on that batch with a multiple-choice prompt — one question per comment, up to 4 per call, options **Apply** / **Skip** (the auto-appended "Other" choice covers "apply with this modification, typed inline"). Track `approved` and `skipped`, and continue batch by batch. Suggested replies are demonstration-only — **never post anything to the forge.**
 
-### Step 12 — Decide on the batch (AskUserQuestion)
+**auto mode:** skip the per-comment prompts. Decide automatically (score 2–5 → apply, score 1 → skip) and print one compact summary table — columns: local `#` · score · `path:line` (or `general`) · author · ≤10-word gist · decision (every skip carries a brief reason). Print suggested replies only for the skipped (invalid) comments. Then go straight to step 6 — the plan is the only gate.
 
-Right after printing a batch, collect decisions for those comments with a multiple-choice prompt — one question per comment, up to **4 per call**. Details are already on screen, so keep it short:
+### 6. Plan & implement
 
-- **`question`**: `"Comment #N [Score X/5] — <one-line summary>. Apply, skip, or modify?"`
-- **`header`**: a topic slug **≤12 characters** (e.g. `modifier`) — no score here.
-- **`options`** (exactly two — an "Other" free-text choice is auto-appended):
-  - `{ label: "Apply", description: "Implement as-is" }`
-  - `{ label: "Skip", description: "Ignore this comment" }`
-- Apply **with modification** = user picks **"Other"** and types the instruction inline.
+Summarize the approved list (score-ordered), then produce a detailed implementation plan and get approval **before editing** (Claude Code: `EnterPlanMode` → `ExitPlanMode`):
 
-Continue in batches until every comment is decided. Track `approved` (Apply + any Other with its instruction) and `skipped`.
+- Order by score, group changes that touch the same file. Per comment: the exact file(s), the nature of the change, and which conventions rule it satisfies (if any).
+- End with a validation step using the project's build/lint command (detect it now if not already found; run it in the background).
+- **auto mode:** also list the auto-skipped invalid comments with their reasons, so nothing disappears silently.
 
-**Suggested replies are demonstration-only.** They appear only inline in Step 11 blocks so the user can read/copy them. Never collect, recap, or "prepare for posting" the replies, and **never post anything to the forge** — this skill never posts review replies.
+**Plan approval is the last gate.** Once approved, implement everything and flow straight through step 7 (and step 8 if advanced) — don't stop to ask whether to continue. Never commit without explicit instruction.
 
----
+### 7. Commit message
 
-## Phase 5 — Implementation plan
+Suggest a commit message: if the `commit-suggest` skill is available, invoke it; otherwise compose one following the project's commit conventions (guidance in the conventions file, or `how_to_write_commit_messages.md` at the repo root).
 
-13. Summarize the approved list:
-```
-Approved comments to implement:
-1. [Score 5] <brief description>
-2. [Score 4] <brief description>
-...
-```
+### 8. [advanced] Extract rules & learn
 
-14. Produce a detailed implementation plan and get approval **before editing** (Claude Code: `EnterPlanMode`):
-   - Order tasks by score (highest first); group changes touching the same file.
-   - Per approved comment: exact file(s), nature of the change, and which `CONVENTIONS_FILE` rule it satisfies (if applicable).
-   - Final validation step using `VALIDATION_CMD` (ask for it now if deferred in 0D). Run it in the background (see *Concurrency*).
-   - **Auto mode:** also list the auto-skipped invalid comments with their reasons and flag any *(not design-verified)* items — nothing disappears silently; this approval is the only gate.
+Turn what was processed into durable rules so the same comments don't recur.
 
-15. Present the plan and wait for approval before any edits (Claude Code: `ExitPlanMode`).
-
-> **Plan approval is the last gate.** Once approved, implement all approved changes and **flow straight through Phase 6 and Phase 7 automatically — do not stop to ask whether to continue/resume/proceed.** The only interactive gates left are the Step 18 rules confirmation and the standing *never commit without explicit instruction* rule.
-
----
-
-## Phase 6 — Post-implementation
-
-16. Suggest a commit message:
-   - `HAS_COMMIT_SUGGEST=true` → invoke the `commit-suggest` skill.
-   - Otherwise compose one following project conventions (commit guidance in `CONVENTIONS_FILE` or `how_to_write_commit_messages.md` at the repo root).
-
----
-
-## Phase 7 — Extract rules & learn
-
-Turn what was processed into durable rules so the same review comments don't recur. Runs **after** the commit-suggest step.
-
-### Step 17 — Derive candidate rules
-
-From the **applied** comments (and reasoning) plus the **invalid** ones and their replies, extract concise, checkable rules — the underlying principle, not the one-off fix (e.g. *"Composables must accept `modifier: Modifier = Modifier` as the first optional parameter"*); cite external/team sources. Skip anything already documented. Also: if a `REVIEWERS` member left multiple high-score comments consistently enforcing a pattern absent from `CONVENTIONS_FILE`, flag it as a candidate rule.
-
-### Step 18 — Confirm with the user
-
-Present the candidates and let the user confirm or trim **before writing anything**. Never write unapproved rules.
-
-### Step 19 — Write to the standalone rules file
-
-Maintain a single cumulative **`docs/pr-review-rules.md`** (create `docs/` and the file if missing). Append approved rules under a dated / PR-tagged heading and **de-dupe** against existing ones.
-
-### Step 20 — Point to it from the conventions file
-
-Ensure the agent-instructions file (`CONVENTIONS_FILE`; priority **`AGENTS.md`** → **`CLAUDE.md`** → `.github/copilot-instructions.md` → `.cursor` rules) references the rules file with a single pointer line, e.g. *"Always review and follow `docs/pr-review-rules.md` — accumulated rules extracted from PR review comments."* **Idempotent:** if such a line exists, leave it.
-
-### Step 21 — Reconcile an existing extraction convention
-
-If the conventions file already prescribes its own rules-extraction method, route **new** rules into `docs/pr-review-rules.md` and point to it from that section rather than duplicating inline. On first use, offer a one-time **kickstart**: with the user's confirmation, move review-derived rules already embedded in the conventions file into `docs/pr-review-rules.md` and replace them with the pointer. **Never bulk-edit a large conventions file without showing the user exactly what moves first.**
-
-### Step 22 — Honor any file-sync mandate
-
-If editing the conventions file triggers a "sync to other repos" rule (e.g. AGENTS.md §0.2): copy the updated file when target paths are **real, resolvable directories**; if they're placeholders (e.g. `<path-to-rewrite-repo-1>`) or missing, **skip** and print a one-line reminder to sync manually.
+- **Derive** concise, checkable rules from the applied comments (and the invalid ones + their replies) — the underlying principle, not the one-off fix (e.g. *"Composables must accept `modifier: Modifier = Modifier` as the first optional parameter"*). Skip anything already documented. If a reviewer repeatedly enforced a pattern that's absent from the conventions file, flag it as a candidate.
+- **Confirm** the candidates with the user before writing anything — never write unapproved rules.
+- **Write** approved rules to a single cumulative `docs/pr-review-rules.md` (create it if missing), under a dated / PR-tagged heading, de-duped against what's already there.
+- **Point to it** from the conventions file (priority `AGENTS.md` → `CLAUDE.md` → `.github/copilot-instructions.md` → cursor rules) with one idempotent pointer line. If that file already prescribes its own extraction method, route new rules into `docs/pr-review-rules.md` and point to it rather than duplicating inline. If editing the file triggers a "sync to other repos" mandate, copy it only to real, resolvable paths; otherwise print a one-line manual-sync reminder.
