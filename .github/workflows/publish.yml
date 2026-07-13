@@ -1,23 +1,33 @@
 name: publish
 
 # Publishes to npm via Trusted Publishing (OIDC) — no NPM_TOKEN needed.
-# Triggered on a version tag:
-#   npm version patch        # bumps package.json + creates a git tag
-#   git push --follow-tags   # pushes the commit and the tag → triggers this
 #
-# One-time setup on npmjs.com (after the first manual publish):
+# Runs on every push to main (including PR merges). It publishes ONLY when the
+# version in package.json isn't already on the registry, so ordinary pushes
+# (docs, refactors, chores) pass green without trying to republish.
+#
+# To cut a release: bump the version in package.json — e.g.
+#   npm version minor --no-git-tag-version
+# — merge to main, and this workflow publishes it automatically.
+#
+# One-time setup on npmjs.com (already done for the first manual publish):
 #   Package → Settings → Trusted Publisher → GitHub Actions
 #     Organization or user: NaderNabil216
 #     Repository:           skillsmith
 #     Workflow filename:    publish.yml
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch: # allow a manual run from the Actions tab
 
 permissions:
   contents: read
   id-token: write # required for npm Trusted Publishing (OIDC)
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false # never abort an in-flight publish
 
 jobs:
   publish:
@@ -30,6 +40,27 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       # OIDC trusted publishing needs npm >= 11.5.1 (Node 22 ships npm 10).
       - run: npm install -g npm@latest
-      - run: node scripts/build-manifest.js
+
+      - name: Build manifest
+        run: node scripts/build-manifest.js
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check whether this version is already published
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "v$VERSION is already on npm — skipping publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$VERSION is not published yet — publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # No token: auth is OIDC. Provenance attestations are generated automatically.
-      - run: npm publish --access public
+      - name: Publish to npm
+        if: steps.check.outputs.publish == 'true'
+        run: npm publish --access public
