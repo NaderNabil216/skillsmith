@@ -199,7 +199,7 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with three skills. `process-pr-comments` and `review-pr` are two sides of the same coin — one **addresses** review feedback, the other **produces** it — and `process-pr-comments` calls `commit-suggest` at its commit step.
+Run `skillsmith list` for the live set. Today the catalog ships with four skills. `process-pr-comments` and `review-pr` are two sides of the same coin — one **addresses** review feedback, the other **produces** it — and `process-pr-comments` calls `commit-suggest` at its commit step. `process-pr-comments-lite` is a fast, hands-off variant of the first.
 
 ---
 
@@ -258,6 +258,22 @@ npx @nadernabil216/skillsmith add commit-suggest
 
 ```bash
 npx @nadernabil216/skillsmith add process-pr-comments
+```
+
+---
+
+### ⚡ `process-pr-comments-lite`
+
+> A fast, hands-off variant of `process-pr-comments`: give it a PR/MR number and it **implements the comments that are logically valid** against the code, saves recurring feedback as rules, and stops.
+
+**Why it matters:** sometimes you just want the valid review comments applied without stepping through batches, plans, and prompts. This does exactly that — and nothing else.
+
+**How it differs from `process-pr-comments`:** no user input, no per-comment approval, no implementation-plan gate, no `commit-suggest`, no commit. It validates each comment against the real code, applies the sound ones, writes the rules to `docs/pr-review-rules.md`, and prints a short applied/skipped summary. Reach for the full skill when you want control at each step; reach for this when you want it done.
+
+**Install:**
+
+```bash
+npx @nadernabil216/skillsmith add process-pr-comments-lite
 ```
 
 ---
