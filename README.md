@@ -199,7 +199,7 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with three skills. `process-pr-comments` and `review-pr-private` are two sides of the same coin — one **addresses** review feedback, the other **produces** it — and `process-pr-comments` calls `commit-suggest` at its commit step.
+Run `skillsmith list` for the live set. Today the catalog ships with three skills. `process-pr-comments` and `review-pr` are two sides of the same coin — one **addresses** review feedback, the other **produces** it — and `process-pr-comments` calls `commit-suggest` at its commit step.
 
 ---
 
@@ -262,7 +262,7 @@ npx @nadernabil216/skillsmith add process-pr-comments
 
 ---
 
-### 🔬 `review-pr-private`
+### 🔬 `review-pr`
 
 > A universal **PR review** workflow — compares a branch against its target and produces severity-ranked findings on architecture, clean code, SOLID design, and test quality, in any language.
 
@@ -284,7 +284,7 @@ npx @nadernabil216/skillsmith add process-pr-comments
 **Install:**
 
 ```bash
-npx @nadernabil216/skillsmith add review-pr-private
+npx @nadernabil216/skillsmith add review-pr
 ```
 
 ---

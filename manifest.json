@@ -19,9 +19,9 @@
       ]
     },
     {
-      "name": "review-pr-private",
+      "name": "review-pr",
       "description": "Universal PR review workflow for any AI assistant to verify architecture, clean code, SOLID design, and test quality in any programming language. Two modes: simple (default) reviews the diff with severity-ranked findings; advanced adds existing-comment dedup (never repeat what reviewers already said — agree/reply/react instead), security/performance/dependency review, and optional build+test verification in a temporary worktree. Use when asked to \"review PR 123\", \"review this MR\", \"review this branch against develop\", \"compare and review feature/x\", or \"do a deep/advanced/thorough review of this PR\".",
-      "version": "2b5ce6ca",
+      "version": "c5147e9c",
       "files": [
         "SKILL.md"
       ]
