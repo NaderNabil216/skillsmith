@@ -1,5 +1,5 @@
 ---
-name: review-pr-private
+name: review-pr
 description: >
   Universal PR review workflow for any AI assistant to verify architecture, clean code, SOLID
   design, and test quality in any programming language. Two modes: simple (default) reviews the

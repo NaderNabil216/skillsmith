@@ -199,7 +199,7 @@ flowchart LR
 
 ## 📚 The skill catalog
 
-Run `skillsmith list` for the live set. Today the catalog ships with two skills that **pair together** — `process-pr-comments` calls `commit-suggest` at its commit step.
+Run `skillsmith list` for the live set. Today the catalog ships with three skills. `process-pr-comments` and `review-pr` are two sides of the same coin — one **addresses** review feedback, the other **produces** it — and `process-pr-comments` calls `commit-suggest` at its commit step.
 
 ---
 
@@ -239,16 +239,18 @@ npx @nadernabil216/skillsmith add commit-suggest
 
 **Why it matters:** review feedback is easy to lose track of. This skill makes sure **every unresolved comment is seen, judged against the real code, and either resolved or consciously skipped** — then turns recurring feedback into durable project rules so the same notes don't come back.
 
-**How it handles its work — phase by phase:**
+**Two modes:** **simple** (default) does the core loop; **advanced** ("deep"/"thorough") adds rule extraction, design-tool checks, and a REST fallback when no CLI is present.
 
-1. **Context (Phase 0).** Detects the forge from the git remote, resolves access (official CLI `gh`/`glab`/`bb` first, REST-token fallback), and finds your conventions file and validation command — asking at most **one** consolidated question.
-2. **Change-request details (Phase 1).** Asks for the PR/MR number (**always asked, never inferred**) and fetches its title, ticket, source/target branches, and reviewers.
-3. **Branch setup (Phase 2).** Checks out the source branch and merges the target, so review runs against an up-to-date tree (handling conflicts with you if they arise).
-4. **Fetch comments (Phase 3).** Pulls only the **unresolved** threads, walking every reply and task; exits early if there's nothing to address.
-5. **Score & decide (Phase 4).** Scores each comment **1–5, validated against the actual code** (and against the design tool for visual comments), then presents them in batches for an *Apply / Skip / Modify* decision.
-6. **Plan & implement (Phase 5).** Drafts an implementation plan for your **approval**, then applies the approved changes.
-7. **Commit (Phase 6).** Suggests a commit message — reusing **`commit-suggest`** when it's installed.
-8. **Extract rules (Phase 7).** Distills durable rules from what was applied/rejected into `docs/pr-review-rules.md` and points your conventions file at them.
+**How it handles its work — step by step:**
+
+1. **Resolve inputs & context.** Asks for the PR/MR number and mode in **one** prompt (never inferred from the current branch), detects the forge from the git remote, and checks the CLI (`gh`/`glab`/`bb`). Your conventions file, validation command, and `commit-suggest` are looked up only when first needed.
+2. **Set up the branch.** Checks out the source branch and merges the target, so review runs against an up-to-date tree (handling conflicts with you if they arise).
+3. **Fetch comments.** Pulls only the **unresolved** threads, walking every reply and task; exits early if there's nothing to address.
+4. **Score & validate.** Scores each comment **1–5, validated against the actual code** (and, in advanced mode, against the design tool for visual comments).
+5. **Present & decide.** Presents comments in batches for an *Apply / Skip / Modify* decision — or, in auto mode, applies valid ones from a single summary table.
+6. **Plan & implement.** Drafts an implementation plan for your **approval**, then applies the approved changes.
+7. **Commit.** Suggests a commit message — reusing **`commit-suggest`** when it's installed.
+8. **Extract rules (advanced).** Distills durable rules from what was applied/rejected into `docs/pr-review-rules.md` and points your conventions file at them.
 
 > It **never posts replies** to the forge and **never commits** without your say-so — suggested replies are shown inline only so you can copy them yourself.
 
@@ -256,6 +258,33 @@ npx @nadernabil216/skillsmith add commit-suggest
 
 ```bash
 npx @nadernabil216/skillsmith add process-pr-comments
+```
+
+---
+
+### 🔬 `review-pr`
+
+> A universal **PR review** workflow — compares a branch against its target and produces severity-ranked findings on architecture, clean code, SOLID design, and test quality, in any language.
+
+**Why it matters:** where `process-pr-comments` *addresses* feedback, this skill *produces* it. It reviews a diff the way a senior engineer would — grounded in the actual code, never inventing findings — and hands you a copy-pasteable report without disturbing your current checkout.
+
+**Two modes:** **simple** (default) reviews the diff and reports severity-ranked findings (🔴 blocker · 🟠 major · 🟡 minor · 🔵 nit) with a verdict. **advanced** ("deep"/"thorough") also dedups against comments other reviewers already left, adds security / performance / dependency dimensions, and can optionally build + test the branch in a throwaway worktree.
+
+**How it handles its work — step by step:**
+
+1. **Resolves inputs** — the source and target branches (via `gh`/`glab` when present, pure git otherwise).
+2. **Triages the change** — size, shape, and intent from the diff stat and commit log before reading any code.
+3. **Inspects the diff** — reads each change in its surrounding context, separating issues the PR *introduces* from pre-existing ones.
+4. **Checks the code** against architecture, clean-code / SOLID, and test-quality checklists.
+5. **Verifies every finding** — re-confirms each against the diff before reporting, dropping anything it can't stand behind.
+6. **Reports** — a plain-English summary, a verdict (approve / approve with nits / request changes), and findings with ` ```suggestion ` blocks where a one-click fix fits.
+
+> In advanced mode it can post replies and reactions to existing comments — but **only on your explicit approval**, never automatically.
+
+**Install:**
+
+```bash
+npx @nadernabil216/skillsmith add review-pr
 ```
 
 ---
